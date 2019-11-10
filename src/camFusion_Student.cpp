@@ -120,6 +120,8 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
 
     // display image
     string windowName = "3D Objects";
+    cv::namedWindow(windowName, cv::WINDOW_NORMAL);
+    cv::resizeWindow(windowName, 1000,1000);
     cv::namedWindow(windowName, 1);
     cv::imshow(windowName, topviewImg);
 
@@ -154,5 +156,22 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
 
 void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
 {
-    // ...
+    int i,j;
+    vector<vector<int> > correspondency;
+    auto current_boxes = currFrame.boundingBoxes;
+    auto prev_boxes = prevFrame.boundingBoxes;
+    for(i=0;i<currFrame.boundingBoxes.size();++i){
+        for(auto match:matches){
+            if(match = )
+        }
+        for(j=0;j<prevFrame.boundingBoxes.size();++j){
+        }
+            //for(auto match:matches){
+//current_boxes[i].
+                // if the match is inside in both bounding boxes
+                // then incrase the number of corespondency.
+                //current_boxes[i].contains(currFrame.keypoints.at(match.queryIdx))
+                //if(match.queryIdx)
+            //           }
+    }
 }

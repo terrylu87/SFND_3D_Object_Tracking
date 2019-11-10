@@ -160,18 +160,56 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
     vector<vector<int> > correspondency;
     auto current_boxes = currFrame.boundingBoxes;
     auto prev_boxes = prevFrame.boundingBoxes;
-    for(i=0;i<currFrame.boundingBoxes.size();++i){
-        for(auto match:matches){
-            if(match = )
+    int box_score[prev_boxes.size()][current_boxes.size()] = {};
+
+    for(auto match:matches){
+        cv::KeyPoint prev_kpt = prevFrame.keypoints[match.queryIdx];
+        cv::Point prev_pt = cv::Point(prev_kpt.pt.x,prev_kpt.pt.y);
+
+        cv::KeyPoint current_kpt = currFrame.keypoints[match.trainIdx];
+        cv::Point current_pt = cv::Point(current_kpt.pt.x,current_kpt.pt.y);
+
+        // If the match is in both previous and current frame,
+        // Then record the box pair for the match
+        std::vector<int> prev_ids , curr_ids;
+        for (int i=0;i< prev_boxes.size();++i)
+        {
+            if(prevFrame.boundingBoxes[i].roi.contains(prev_pt))
+            {
+                prev_ids.push_back(i);
+            }
         }
-        for(j=0;j<prevFrame.boundingBoxes.size();++j){
+        for (int j=0;j< current_boxes.size();++j)
+        {
+            if(currFrame.boundingBoxes[j].roi.contains(current_pt))
+            {
+                curr_ids.push_back(j);
+            }
         }
-            //for(auto match:matches){
-//current_boxes[i].
-                // if the match is inside in both bounding boxes
-                // then incrase the number of corespondency.
-                //current_boxes[i].contains(currFrame.keypoints.at(match.queryIdx))
-                //if(match.queryIdx)
-            //           }
+
+        for(auto prev_id:prev_ids)
+        {
+            for(auto current_id:curr_ids)
+            {
+                box_score[prev_id][current_id]+=1;
+            }
+        }
+    }
+
+    // highest score for each box pair
+    for(int i = 0;i< prev_boxes.size();++i)
+    {
+        int max_count = 0;
+        int max_id = 0;
+
+        for(int j=0;j< current_boxes.size();++j)
+        {
+            if(box_score[i][j] > max_count)
+            {
+                max_count = box_score[i][j];
+                max_id = j;
+            }
+        }
+        bbBestMatches[i] = max_id;
     }
 }

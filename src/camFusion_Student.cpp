@@ -141,11 +141,20 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint
     int i;
     for(i=0;i<kptMatches.size();++i){
         if(boundingBox.roi.contains(kptsCurr[kptMatches[i].queryIdx].pt)){
-            vec_distance.emplace_back(cv::norm(kptsPrev[kptMatches[i].trainIdx].pt - kptsCurr[kptMatches[i].queryIdx].pt));
+            vec_distance.push_back(cv::norm(kptsPrev[kptMatches[i].trainIdx].pt - kptsCurr[kptMatches[i].queryIdx].pt));
             vec_idx.push_back(i);
         }
     }
     double mean_distance = std::accumulate(vec_distance.begin(),vec_distance.end(),0) / vec_distance.size();
+    double sum = 0;
+    for(auto d:vec_distance){
+        sum += (d-mean_distance)*(d-mean_distance);
+    }
+    double variance_distance = sum / vec_distance.size();
+
+    cout << "mean_distance == " << mean_distance << endl;
+    cout << "variance_distance == " << variance_distance << endl;
+    cout << "+++++++++++" << endl;
 
     for(i=0;i<vec_idx.size();++i){
         if(vec_distance[i] < mean_distance*1.5){

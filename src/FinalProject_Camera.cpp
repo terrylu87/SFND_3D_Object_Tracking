@@ -22,10 +22,23 @@
 
 using namespace std;
 
+void log(const string& detector_name,
+         const string& descriptor_name,
+         vector<double>& camera_ttcs,
+         ofstream& logfile)
+{
+    logfile << "| " << detector_name << "+" << descriptor_name << " | ";
+    for(auto ttc:camera_ttcs){
+        logfile << ttc << " | ";
+    }
+    logfile << "\n";
+}
+
 /* MAIN PROGRAM */
-void test(string detectorType,string descriptorType)
+void run(string detectorType,string descriptorType,ofstream &logfile)
 //int main(int argc, const char *argv[])
 {
+    cout << detectorType << "+" << descriptorType << endl;
     /* INIT VARIABLES AND DATA STRUCTURES */
 
     // data location
@@ -76,6 +89,7 @@ void test(string detectorType,string descriptorType)
     bool bVis = false;            // visualize results
 
     /* MAIN LOOP OVER ALL IMAGES */
+    vector<double> cameraTTCs;
 
     for (size_t imgIndex = 0; imgIndex <= imgEndIndex - imgStartIndex; imgIndex+=imgStepWidth)
     {
@@ -275,7 +289,9 @@ void test(string detectorType,string descriptorType)
                     double ttcCamera;
                     clusterKptMatchesWithROI(*currBB, (dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints, (dataBuffer.end() - 1)->kptMatches);                    
                     computeTTCCamera((dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints, currBB->kptMatches, sensorFrameRate, ttcCamera);
+                    cameraTTCs.push_back(ttcCamera);
                     //// EOF STUDENT ASSIGNMENT
+
 
                     char str[200];
                     sprintf(str, "TTC Lidar : %f s, TTC Camera : %f s", ttcLidar, ttcCamera);
@@ -307,14 +323,37 @@ void test(string detectorType,string descriptorType)
 
     } // eof loop over all images
 
-    //return 0;
+    log(detectorType,descriptorType,cameraTTCs,logfile);
 }
 
 int main(int argc, const char *argv[])
 {
+    ofstream logfile;
+    logfile.open ("log.txt");
 
-    //string detectorType = "SHITOMASI";
-    //string descriptorType = "BRISK"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
-    test("SHITOMASI","BRISK");
+    vector<string> detectorTypes{"SHITOMASI","HARRIS", "FAST", "BRISK", "ORB", "SIFT"};
+    vector<string> descriptorTypes{"BRISK","BRIEF", "ORB", "FREAK", "SIFT"};
+
+    for(auto detectorType:detectorTypes){
+        for(auto descriptorType:descriptorTypes){
+            //cout << detectorType << ", " << descriptorType << endl;
+            if(detectorType.compare("SIFT") == 0
+               &&descriptorType.compare("ORB") == 0){
+                continue;
+            }
+            run(detectorType,descriptorType,logfile);
+        }
+    }
+
+    detectorTypes = {"AKAZE"};
+    descriptorTypes = {"BRISK","BRIEF", "ORB", "FREAK", "AKAZE", "SIFT"};
+    for(auto detectorType:detectorTypes){
+        for(auto descriptorType:descriptorTypes){
+            //cout << detectorType << ", " << descriptorType << endl;
+            run(detectorType,descriptorType,logfile);
+        }
+    }
+
+    logfile.close();
     return 0;
 }

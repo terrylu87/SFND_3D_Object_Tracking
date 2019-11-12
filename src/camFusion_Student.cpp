@@ -131,35 +131,33 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
     }
 }
 
-
 // associate a given bounding box with the keypoints it contains
 void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches)
 {
-    double distance_sum = 0;
     vector<double> vec_distance;
     vector<int> vec_idx;
     int i;
     for(i=0;i<kptMatches.size();++i){
-        if(boundingBox.roi.contains(kptsCurr[kptMatches[i].queryIdx].pt)){
-            vec_distance.push_back(cv::norm(kptsPrev[kptMatches[i].trainIdx].pt - kptsCurr[kptMatches[i].queryIdx].pt));
+        if(boundingBox.roi.contains(kptsCurr[kptMatches[i].trainIdx].pt)){
+            vec_distance.push_back(cv::norm(kptsCurr[kptMatches[i].trainIdx].pt - kptsPrev[kptMatches[i].queryIdx].pt));
             vec_idx.push_back(i);
         }
     }
-    double mean_distance = std::accumulate(vec_distance.begin(),vec_distance.end(),0) / vec_distance.size();
+    double mean_distance = std::accumulate(vec_distance.begin(),vec_distance.end(),0.0) / vec_distance.size();
     double sum = 0;
-    for(auto d:vec_distance){
+    for(double d:vec_distance){
         sum += (d-mean_distance)*(d-mean_distance);
     }
     double variance_distance = sum / vec_distance.size();
 
-    cout << "mean_distance == " << mean_distance << endl;
-    cout << "variance_distance == " << variance_distance << endl;
-    cout << "+++++++++++" << endl;
+    //cout << "mean_distance == " << mean_distance << endl;
+    //cout << "variance_distance == " << variance_distance << endl;
+    //cout << "+++++++++++" << endl;
 
     for(i=0;i<vec_idx.size();++i){
         if(vec_distance[i] < mean_distance*1.5){
             boundingBox.kptMatches.push_back(kptMatches[vec_idx[i]]);
-            boundingBox.keypoints.push_back(kptsCurr[kptMatches[vec_idx[i]].queryIdx]);
+            boundingBox.keypoints.push_back(kptsCurr[kptMatches[vec_idx[i]].trainIdx]);
         }
     }
 }
@@ -217,7 +215,6 @@ void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPo
     double dT = 1 / frameRate;
     TTC = -dT / (1 - medDistRatio);
 }
-
 
 void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
                      std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC)
@@ -326,7 +323,6 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
     // }
 }
 
-
 void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
 {
     int i,j;
@@ -384,5 +380,6 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
             }
         }
         bbBestMatches[i] = max_id;
+        //std::cout << "ID Matching: " << i << " => " << max_id << "\n";
     }
 }

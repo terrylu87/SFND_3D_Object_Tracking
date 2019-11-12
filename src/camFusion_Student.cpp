@@ -135,7 +135,24 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
 // associate a given bounding box with the keypoints it contains
 void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches)
 {
-    // ...
+    double distance_sum = 0;
+    vector<double> vec_distance;
+    vector<int> vec_idx;
+    int i;
+    for(i=0;i<kptMatches.size();++i){
+        if(boundingBox.roi.contains(kptsCurr[kptMatches[i].queryIdx].pt)){
+            vec_distance.emplace_back(cv::norm(kptsPrev[kptMatches[i].trainIdx].pt - kptsCurr[kptMatches[i].queryIdx].pt));
+            vec_idx.push_back(i);
+        }
+    }
+    double mean_distance = std::accumulate(vec_distance.begin(),vec_distance.end(),0) / vec_distance.size();
+
+    for(i=0;i<vec_idx.size();++i){
+        if(vec_distance[i] < mean_distance*1.5){
+            boundingBox.kptMatches.push_back(kptMatches[vec_idx[i]]);
+            boundingBox.keypoints.push_back(kptsCurr[kptMatches[vec_idx[i]].queryIdx]);
+        }
+    }
 }
 
 
@@ -143,7 +160,53 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint
 void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, 
                       std::vector<cv::DMatch> kptMatches, double frameRate, double &TTC, cv::Mat *visImg)
 {
-    // ...
+    // compute distance ratios between all matched keypoints
+    vector<double> distRatios; // stores the distance ratios for all keypoints between curr. and prev. frame
+
+    for (auto it1 = kptMatches.begin(); it1 != kptMatches.end() - 1; ++it1)
+    { // outer kpt. loop
+
+        // get current keypoint and its matched partner in the prev. frame
+        cv::KeyPoint kpOuterCurr = kptsCurr.at(it1->trainIdx);
+        cv::KeyPoint kpOuterPrev = kptsPrev.at(it1->queryIdx);
+
+        for (auto it2 = kptMatches.begin() + 1; it2 != kptMatches.end(); ++it2)
+        { // inner kpt.-loop
+
+            double minDist = 100.0; // min. required distance
+
+            // get next keypoint and its matched partner in the prev. frame
+            cv::KeyPoint kpInnerCurr = kptsCurr.at(it2->trainIdx);
+            cv::KeyPoint kpInnerPrev = kptsPrev.at(it2->queryIdx);
+
+            // compute distances and distance ratios
+            double distCurr = cv::norm(kpOuterCurr.pt - kpInnerCurr.pt);
+            double distPrev = cv::norm(kpOuterPrev.pt - kpInnerPrev.pt);
+
+            if (distPrev > std::numeric_limits<double>::epsilon() && distCurr >= minDist)
+            { // avoid division by zero
+
+                double distRatio = distCurr / distPrev;
+                distRatios.push_back(distRatio);
+            }
+        } // eof inner loop over all matched kpts
+    }     // eof outer loop over all matched kpts
+
+    // only continue if list of distance ratios is not empty
+    if (distRatios.size() == 0)
+    {
+        TTC = NAN;
+        return;
+    }
+
+
+    // replacement for meanDistRatio
+    std::sort(distRatios.begin(), distRatios.end());
+    long medIndex = floor(distRatios.size() / 2.0);
+    double medDistRatio = distRatios.size() % 2 == 0 ? (distRatios[medIndex - 1] + distRatios[medIndex]) / 2.0 : distRatios[medIndex]; // compute median dist. ratio to remove outlier influence
+
+    double dT = 1 / frameRate;
+    TTC = -dT / (1 - medDistRatio);
 }
 
 
@@ -151,47 +214,107 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
                      std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC)
 {
     // auxiliary variables
-    static double previous_TTC = -1;
-    static double previous_speed = 0;
-    const double max_acceleration = 9.8; // set max acceleration to g = 9.8
     double dT = 1/frameRate;        // time between two measurements in seconds
     double laneWidth = 4.0; // assumed width of the ego lane
 
     // find closest distance to Lidar points within ego lane
+    vector<double> xPrev,xCurr;
     double minXPrev = 1e9, minXCurr = 1e9;
     for (auto it = lidarPointsPrev.begin(); it != lidarPointsPrev.end(); ++it)
     {
         if(it->y > -laneWidth/2 && it->y < laneWidth/2){
-            minXPrev = minXPrev > it->x ? it->x : minXPrev;
+            xPrev.push_back(it->x);
+            //minXPrev = minXPrev > it->x ? it->x : minXPrev;
         }
     }
 
     for (auto it = lidarPointsCurr.begin(); it != lidarPointsCurr.end(); ++it)
     {
         if(it->y > -laneWidth/2 && it->y < laneWidth/2){
-            minXCurr = minXCurr > it->x ? it->x : minXCurr;
+            xCurr.push_back(it->x);
+            //minXCurr = minXCurr > it->x ? it->x : minXCurr;
         }
     }
 
-    // compute TTC from both measurements
-    TTC = minXCurr * dT / (minXPrev - minXCurr);
-    //cout << "TTC == " << TTC << endl;
-    if(previous_TTC  > 0){
-        double speed = (minXPrev - minXCurr) / dT;
-        //cout << "current speed == " << speed << endl;
-        double a = (previous_speed - speed) / dT;
-        //cout << "a == " << a << endl;
-        if(abs(a) < max_acceleration){
-            previous_speed = speed;
-        }else{
-            //cout << "discard this frame" << endl;
-            TTC = previous_TTC - dT;
-        }
-        previous_TTC = TTC;
-    }else{
-        previous_TTC = TTC;
-        previous_speed = (minXPrev - minXCurr) / dT;
+    double meanXPrev = accumulate(xPrev.begin(),xPrev.end(),0.0) / xPrev.size();
+    double meanXCurr = accumulate(xCurr.begin(),xCurr.end(),0.0) / xCurr.size();
+    double varianceXPrev = 0;
+    double varianceXCurr = 0;
+    double sum=0;
+    for(auto x:xPrev){
+        sum += ((x - meanXPrev) * (x - meanXPrev));
     }
+    varianceXPrev = sum / xPrev.size();
+
+    sum = 0;
+    for(auto x:xCurr){
+        sum += ((x - meanXCurr) * (x - meanXCurr));
+    }
+    varianceXCurr = sum / xCurr.size();
+
+    double stdXPrev = sqrt(varianceXPrev);
+    double stdXCurr = sqrt(varianceXCurr);
+
+    const double filter_factor = 0.1;
+    double minXPrevFilterd = 1e9, minXCurrFilterd = 1e9;
+    double xPrevThreshold = meanXPrev - filter_factor*stdXPrev;
+    for(auto x:xPrev){
+        minXPrev = minXPrev > x ? x : minXPrev;
+        if(x > xPrevThreshold){
+            minXPrevFilterd = minXPrevFilterd > x ? x : minXPrevFilterd;
+        }
+    }
+
+    double xCurrThreshold = meanXCurr - filter_factor*stdXCurr;
+    for(auto x:xCurr){
+        minXCurr = minXCurr > x ? x : minXCurr;
+        if(x > xCurrThreshold){
+            minXCurrFilterd = minXCurrFilterd > x ? x : minXCurrFilterd;
+        }
+    }
+
+
+    // compute TTC from both measurements
+    double TTCmin = minXCurr * dT / (minXPrev - minXCurr);
+    double TTCmean = meanXCurr * dT / (meanXPrev - meanXCurr);
+    double TTCFilterd = minXCurrFilterd * dT / (minXPrevFilterd - minXCurrFilterd);
+
+    TTC = TTCFilterd;
+    //TTC = TTCmean;
+
+#if 0
+    cout << "meanXPrev == " << meanXPrev << endl;
+    cout << "minXPrev  == " << minXPrev << endl;
+    cout << "varianceXPrev == " << varianceXPrev << endl;
+    cout << "----------------------" << endl;
+    cout << "meanXCurr == " << meanXCurr << endl;
+    cout << "minXCurr  == " << minXCurr << endl;
+    cout << "varianceXCurr == " << varianceXCurr << endl;
+    cout << "TTC == " << TTC << endl;
+    cout << "TTCmean == " << TTCmean << endl;
+    cout << "TTCFilterd == " << TTCFilterd << endl;
+    cout << "+++++++++++++++++++++++++++++" << endl << endl;
+#endif
+
+    //static double previous_TTC = -1;
+    //static double previous_speed = 0;
+    //const double max_acceleration = 9.8; // set max acceleration to g = 9.8
+    //if(previous_TTC  > 0){
+    // double speed = (minXPrev - minXCurr) / dT;
+    // cout << "current relative speed == " << speed << endl;
+    // double a = (previous_speed - speed) / dT;
+    // cout << "a == " << a << endl;
+    // if(abs(a) < max_acceleration){
+    //     previous_speed = speed;
+    // }else{
+    //     //cout << "discard this frame" << endl;
+    //     TTC = previous_TTC - dT;
+    // }
+    // previous_TTC = TTC;
+    // //}else{
+    // //previous_TTC = TTC;
+    // previous_speed = (minXPrev - minXCurr) / dT;
+    // }
 }
 
 
